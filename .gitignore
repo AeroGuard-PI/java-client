@@ -1,9 +1,26 @@
-.git/
+# Compilação e Binários (Maven)
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Variáveis de Ambiente e Credenciais
 .env
 .env.*
 !.env.example
 coletor.env
+!coletor.env.example
+
+# Sistema e IDEs
+.DS_Store
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
 .venv/
 __pycache__/
 *.pyc
-target/
