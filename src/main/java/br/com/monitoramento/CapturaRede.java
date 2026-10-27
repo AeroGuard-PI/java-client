@@ -3,6 +3,9 @@ package br.com.monitoramento;
 import oshi.SystemInfo;
 
 import java.time.Instant;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,7 +32,8 @@ public class CapturaRede {
         for (var rede : sistema.getHardware().getNetworkIFs()) {
             if (rede.getMacaddr().equalsIgnoreCase(mac)) {
                 var so = sistema.getOperatingSystem();
-                return new Maquina(so.getNetworkParams().getHostName(), so.getFamily(), mac);
+                var hostname = so.getNetworkParams().getHostName();
+                return new Maquina(hostname.substring(0, Math.min(50, hostname.length())), sistemaOperacional(), mac);
             }
         }
         throw new IllegalArgumentException("O MAC configurado não foi encontrado nesta máquina.");
@@ -88,5 +92,20 @@ public class CapturaRede {
             throw new IllegalArgumentException("MAC_ADDRESS inválido.");
         }
         return HexFormat.ofDelimiter(":").formatHex(HexFormat.of().parseHex(texto));
+    }
+
+    private String sistemaOperacional() {
+        var arquivo = Path.of(System.getenv().getOrDefault("HOST_ROOT", "/"), "etc", "os-release");
+        if (Files.isRegularFile(arquivo)) {
+            try (var linhas = Files.lines(arquivo)) {
+                var nome = linhas.filter(linha -> linha.startsWith("PRETTY_NAME="))
+                        .map(linha -> linha.substring("PRETTY_NAME=".length()).replace("\"", ""))
+                        .findFirst().orElse("Linux");
+                return nome.substring(0, Math.min(50, nome.length()));
+            } catch (IOException erro) {
+                throw new IllegalStateException("Não foi possível ler o sistema operacional da EC2.", erro);
+            }
+        }
+        return sistema.getOperatingSystem().getFamily();
     }
 }

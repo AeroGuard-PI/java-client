@@ -12,5 +12,6 @@ ENV DB_USER=""
 ENV DB_PASSWORD=""
 ENV EMPRESA_CNPJ=""
 ENV MAC_ADDRESS=""
+ENV HOST_ROOT=/host
 COPY --from=build /app/target/aeroguard-java.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]

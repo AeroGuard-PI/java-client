@@ -1,34 +1,21 @@
-# Cliente Java AeroGuard
+# Cliente Java
 
-Coleta download e upload por interface, em Mbps. Usa Java 25, OSHI 7.7.2, records, JDBC.
+Coleta download e upload por interface usando Java 25, OSHI 7.7.2, records e JDBC. O Maven Shade inclui as dependências no JAR.
 
-Para instalar em um servidor, use `sudo bash instalar-cliente.sh` na raiz do pacote completo. O JAR já está incluído e o instalador prepara o Java e o serviço. O Python é instalado junto e coleta CPU, memória e disco.
+A instalação é feita pelo script-instalacao-cliente.sh do repositório [script-instalacao-pi](https://github.com/AeroGuard-PI/script-instalacao-pi). Ele baixa este repositório e script-python separadamente e constrói as imagens Docker. A empresa vem do login e o MAC é obtido automaticamente. O Java recebe a configuração preparada pelo instalador.
 
-## Desenvolver
+Para compilar no ambiente de desenvolvimento:
 
 ```bash
 mvn clean package
-java -jar target/aeroguard-java.jar --interfaces
 ```
 
-O resultado é `target/aeroguard-java.jar`, com as dependências incluídas. Para executar manualmente, forneça DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, EMPRESA_CNPJ e MAC_ADDRESS no ambiente e rode `java -jar target/aeroguard-java.jar`.
+O resultado é `target/aeroguard-java.jar`. O Dockerfile faz essa compilação usando JDK 25 e executa o JAR em uma JRE 25.
 
-O instalador salva as variáveis em um arquivo de ambiente do systemd. 
+A taxa usa `(delta de bytes × 8) / segundos decorridos / 1.000.000`, em Mbps. A primeira leitura prepara a referência. Reset de contador ou troca da interface descarta a comparação anterior.
 
-## Coletar
+`interfaceNome`, como ens5 ou eth0, é o nome local da interface. O MAC identifica a EC2; a coleta inclui as interfaces disponíveis e não se limita àquela usada no cadastro.
 
-O MAC escolhido precisa existir no servidor. Java e Python usam o mesmo CNPJ e MAC; servidores diferentes recebem seus próprios MACs. Hostname não identifica a máquina.
+Uma thread agenda os ciclos a cada cinco segundos. Records e listas imutáveis transportam as leituras, e o histórico é protegido. As capturas são gravadas em lote e transação. A configuração mais recente com disponibilidade 0 impede novas inserções sem ser reativada pelo agente.
 
-A aplicação busca empresa, máquina, componente Rede e configuração no banco. Cadastra a máquina se necessário e cria a configuração de Rede apenas quando ainda não existir. A configuração mais recente com disponibilidade 0 é preservada e impede novas inserções daquele componente.
-
-`interfaceNome` é o nome dado pelo sistema à interface, como `eth0` ou `ens18`. Não é o hostname. O MAC usado no cadastro não restringe a coleta a uma única interface.
-
-Uma thread executa os ciclos a cada cinco segundos. Os contadores acumulados são comparados com a leitura anterior:
-
-```text
-Mbps = (bytes atuais - bytes anteriores) × 8 / segundos decorridos / 1.000.000
-```
-
-A primeira leitura prepara a referência. O cálculo usa o tempo efetivamente decorrido. Reset de contadores ou troca de interface descarta a comparação anterior. Os records e as listas imutáveis transportam os valores; o acesso ao histórico também é protegido.
-
-Os registros são gravados por batch em uma transação. As duas colunas configuracao_maquina_* recebem o ID da configuração, conforme as FKs do SQL recebido. Um erro desfaz a transação e o agendamento continua.
+As duas FKs de configuração em captura recebem o ID da configuração consultada. Uma falha na leitura ou no banco é registrada e os ciclos seguintes continuam. Não há reenvio de amostras perdidas.
