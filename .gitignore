@@ -1,0 +1,24 @@
+# Compilação e Binários (Maven)
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Variáveis de Ambiente e Credenciais
+.env
+.env.*
+coletor.env
+!coletor.env.example
+
+# Docker
+.dockerignore
+
+# Sistema e IDEs
+.DS_Store
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
