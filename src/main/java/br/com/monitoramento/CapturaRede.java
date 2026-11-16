@@ -40,19 +40,42 @@ public class CapturaRede {
     }
 
     public synchronized List<MetricaRede> coletar() {
+        return coletarDetalhado().metricas();
+    }
+
+    public synchronized ColetaRede coletarDetalhado() {
         var metricas = new ArrayList<MetricaRede>();
+        var intervalos = new ArrayList<IntervaloRede>();
         var encontradas = new HashSet<String>();
         try {
             for (var rede : sistema.getHardware().getNetworkIFs()) {
                 try {
-                    if (!rede.updateAttributes() || rede.getBytesRecv() < 0 || rede.getBytesSent() < 0) {
+                    if (!rede.updateAttributes()) {
+                        continue;
+                    }
+                    boolean linux = System.getProperty("os.name").startsWith("Linux");
+                    Long recebidos = rede.getBytesRecv();
+                    Long enviados = rede.getBytesSent();
+                    if (linux) {
+                        recebidos = lerContador(rede.getName(), "rx_bytes");
+                        enviados = lerContador(rede.getName(), "tx_bytes");
+                    }
+                    if (recebidos == null || enviados == null || recebidos < 0 || enviados < 0) {
                         continue;
                     }
                     var atual = new LeituraRede(rede.getName(), rede.getMacaddr(),
-                            rede.getBytesRecv(), rede.getBytesSent(), System.nanoTime(), Instant.now());
+                            recebidos, enviados, System.nanoTime(), Instant.now(),
+                            lerContador(rede.getName(), "rx_errors"), lerContador(rede.getName(), "tx_errors"),
+                            lerContador(rede.getName(), "rx_dropped"),
+                            rede.getIfOperStatus().name());
+                    if (atual.interfaceNome().length() > 49) {
+                        throw new IllegalArgumentException("Nome da interface excede o limite de captura.tipo.");
+                    }
                     encontradas.add(atual.interfaceNome());
                     var anterior = anteriores.put(atual.interfaceNome(), atual);
-                    metricas.addAll(calcular(anterior, atual));
+                    var intervalo = IntervaloRede.entre(anterior, atual);
+                    intervalos.add(intervalo);
+                    metricas.addAll(intervalo.metricas());
                 } catch (RuntimeException erro) {
                     System.err.println("Não foi possível ler " + rede.getName() + ".");
                 }
@@ -62,28 +85,17 @@ public class CapturaRede {
             throw erro;
         }
         anteriores.keySet().retainAll(encontradas);
-        return List.copyOf(metricas);
+        return new ColetaRede(List.copyOf(metricas), List.copyOf(intervalos));
     }
 
-    static List<MetricaRede> calcular(LeituraRede anterior, LeituraRede atual) {
-        if (anterior == null || !anterior.macAddress().equals(atual.macAddress())) {
-            return List.of();
+    private static Long lerContador(String interfaceNome, String contador) {
+        try {
+            var caminho = Path.of("/sys/class/net", interfaceNome, "statistics", contador);
+            long valor = Long.parseUnsignedLong(Files.readString(caminho).strip());
+            return valor >= 0 ? valor : null;
+        } catch (IOException | NumberFormatException erro) {
+            return null;
         }
-        long recebidos = atual.recebidos() - anterior.recebidos();
-        long enviados = atual.enviados() - anterior.enviados();
-        double segundos = (atual.tempoNanos() - anterior.tempoNanos()) / 1_000_000_000.0;
-        if (segundos <= 0 || recebidos < 0 || enviados < 0) {
-            return List.of();
-        }
-        if (atual.interfaceNome().length() > 49) {
-            throw new IllegalArgumentException("Nome da interface excede o limite de captura.tipo.");
-        }
-        double download = recebidos * 8.0 / segundos / 1_000_000.0;
-        double upload = enviados * 8.0 / segundos / 1_000_000.0;
-        return List.of(
-                new MetricaRede("Download - " + atual.interfaceNome(), download, "Mbps", atual.dataHora()),
-                new MetricaRede("Upload - " + atual.interfaceNome(), upload, "Mbps", atual.dataHora())
-        );
     }
 
     public static String normalizarMac(String mac) {
