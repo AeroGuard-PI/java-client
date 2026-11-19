@@ -12,6 +12,11 @@ import java.util.Locale;
 
 public class BancoDados {
     public int salvar(Maquina maquina, String cnpj, List<MetricaRede> metricas) throws SQLException {
+        return salvar(maquina, cnpj, metricas, List.of());
+    }
+
+    public int salvar(Maquina maquina, String cnpj, List<MetricaRede> metricas,
+                      List<IntervaloRede> intervalos) throws SQLException {
         try (var conexao = Conexao.abrir()) {
             conexao.setAutoCommit(false);
             try {
@@ -22,6 +27,7 @@ public class BancoDados {
                 int quantidade = 0;
                 if (configuracaoId != 0) {
                     quantidade = inserirCapturas(conexao, maquinaId, componenteId, configuracaoId, metricas);
+                    inserirIntervalos(conexao, maquinaId, configuracaoId, intervalos);
                 }
                 conexao.commit();
                 return quantidade;
@@ -232,6 +238,39 @@ public class BancoDados {
             }
         }
         return metricas.size();
+    }
+
+    private void inserirIntervalos(Connection conexao, int maquinaId, int configuracaoId,
+                                   List<IntervaloRede> intervalos) throws SQLException {
+        if (intervalos.isEmpty()) {
+            return;
+        }
+        var sql = """
+                INSERT INTO captura_rede (maquina_id, config_maquina_id, interface_nome, interface_mac,
+                    inicio_em, coletado_em, duracao_ns, delta_rx_bytes, delta_tx_bytes,
+                    delta_rx_erros, delta_tx_erros, delta_rx_descartes, estado_operacional, motivo_intervalo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+        try (var inserir = preparar(conexao, sql)) {
+            for (var intervalo : intervalos) {
+                inserir.setInt(1, maquinaId);
+                inserir.setInt(2, configuracaoId);
+                inserir.setString(3, intervalo.interfaceNome());
+                inserir.setString(4, intervalo.macAddress());
+                inserir.setTimestamp(5, intervalo.inicio() == null ? null : Timestamp.from(intervalo.inicio()));
+                inserir.setTimestamp(6, Timestamp.from(intervalo.coletadoEm()));
+                inserir.setObject(7, intervalo.duracaoNanos(), java.sql.Types.BIGINT);
+                inserir.setObject(8, intervalo.recebidos(), java.sql.Types.BIGINT);
+                inserir.setObject(9, intervalo.enviados(), java.sql.Types.BIGINT);
+                inserir.setObject(10, intervalo.errosRecebidos(), java.sql.Types.BIGINT);
+                inserir.setObject(11, intervalo.errosEnviados(), java.sql.Types.BIGINT);
+                inserir.setObject(12, intervalo.descartesRecebidos(), java.sql.Types.BIGINT);
+                inserir.setString(13, intervalo.estadoOperacional());
+                inserir.setString(14, intervalo.motivo());
+                inserir.addBatch();
+            }
+            inserir.executeBatch();
+        }
     }
 
     private PreparedStatement preparar(Connection conexao, String sql) throws SQLException {

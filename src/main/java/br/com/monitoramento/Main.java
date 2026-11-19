@@ -32,10 +32,10 @@ public class Main {
         agendador.scheduleAtFixedRate(() -> {
             try {
                 var maquina = captura.identificarMaquina(mac);
-                var metricas = captura.coletar();
-                int quantidade = banco.salvar(maquina, cnpj, metricas);
+                var coleta = captura.coletarDetalhado();
+                int quantidade = banco.salvar(maquina, cnpj, coleta.metricas(), coleta.intervalos());
                 if (quantidade > 0) {
-                    slack.processar(maquina, cnpj, metricas);
+                    slack.processar(maquina, cnpj, coleta.metricas());
                 }
             } catch (Exception | LinkageError erro) {
                 LOG.warn("Falha na coleta: {}", erro.getMessage());
