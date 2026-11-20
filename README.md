@@ -22,7 +22,7 @@ As duas FKs de configuração em captura recebem o ID da configuração consulta
 
 ## Slack
 
-Defina SLACK_BOT_TOKEN em coletor.env. O instalador repassa o arquivo ao contêiner; em execução local, as variáveis precisam estar definidas no processo ou na IDE. O envio usa o SDK oficial do Slack.
+Defina SLACK_BOT_TOKEN em coletor.env. O instalador repassa o arquivo ao contêiner; em execução local, as variáveis precisam estar definidas no processo ou na IDE. O envio usa o SDK oficial do Slack. As mensagens agrupam download e upload por interface e mostram os horários de Brasília.
 
 Ativação, canal, modo, nível mínimo e cooldown vêm de configuracao_slack, pela empresa do CNPJ configurado. Sem token ou configuração válida, não há envio. O bot precisa estar no canal e ter a permissão chat:write. Prefira o ID do canal.
 

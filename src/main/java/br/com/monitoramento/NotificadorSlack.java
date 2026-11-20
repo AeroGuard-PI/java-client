@@ -10,7 +10,10 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
@@ -22,6 +25,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class NotificadorSlack implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(NotificadorSlack.class);
+    private static final Locale PT_BR = Locale.forLanguageTag("pt-BR");
+    private static final DateTimeFormatter HORARIO = DateTimeFormatter
+            .ofPattern("dd/MM/yyyy 'às' HH:mm:ss", PT_BR).withZone(ZoneId.of("America/Sao_Paulo"));
     private final BancoDados banco;
     private final PoliticaAlertasRede politica = new PoliticaAlertasRede();
     private final AtomicBoolean ocupado = new AtomicBoolean();
@@ -139,14 +145,40 @@ public class NotificadorSlack implements AutoCloseable {
 
     private static String formatar(Maquina maquina, List<NotificacaoRede> notificacoes) {
         var texto = new StringBuilder("*AeroGuard | Rede*\n*Máquina:* ")
-                .append(escapar(maquina.hostname())).append('\n');
+                .append(escapar(maquina.hostname()));
+        boolean mesmoHorario = notificacoes.stream()
+                .map(n -> n.metrica().dataHora().truncatedTo(ChronoUnit.SECONDS))
+                .distinct().limit(2).count() == 1;
+        if (mesmoHorario) {
+            texto.append("\n*Horário:* ").append(HORARIO.format(notificacoes.getFirst().metrica().dataHora()))
+                    .append(" (Brasília)");
+        } else {
+            texto.append("\nHorários de Brasília");
+        }
+        var interfaces = new LinkedHashMap<String, StringBuilder>();
         for (var notificacao : notificacoes) {
             var metrica = notificacao.metrica();
-            texto.append('\n').append(notificacao.nivel()).append(" | ")
-                    .append(escapar(metrica.tipo())).append(": ")
-                    .append(String.format(Locale.ROOT, "%.2f %s", metrica.valor(), escapar(metrica.unidade())))
-                    .append(" | ").append(metrica.dataHora());
+            var partes = metrica.tipo().split(" - ", 2);
+            var cabecalho = "*" + escapar(partes.length == 2 ? partes[1] : "Rede") + "*";
+            if (!mesmoHorario) {
+                cabecalho += " · " + HORARIO.format(metrica.dataHora());
+            }
+            var bloco = interfaces.computeIfAbsent(cabecalho, chave -> new StringBuilder("\n\n").append(chave));
+            var direcao = switch (partes[0]) {
+                case "Download" -> "↓ Download";
+                case "Upload" -> "↑ Upload";
+                default -> escapar(partes[0]);
+            };
+            bloco.append('\n').append(direcao).append(": *")
+                    .append(String.format(PT_BR, "%.2f %s", metrica.valor(), escapar(metrica.unidade())))
+                    .append('*');
+            bloco.append(switch (notificacao.nivel()) {
+                case MEDICAO -> "";
+                case ALERTA -> " · ⚠️ *Alerta*";
+                case CRITICO -> " · 🚨 *Crítico*";
+            });
         }
+        interfaces.values().forEach(texto::append);
         return texto.toString();
     }
 

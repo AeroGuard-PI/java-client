@@ -61,13 +61,19 @@ class NotificadorSlackTest {
     @Test
     void publicaComTokenCanalDoBancoEMensagemEscapada() throws Exception {
         var cliente = cliente("xoxb-test", 5000);
-        assertTrue(cliente.processar(maquina, "11111111000191", metricas).get(5, TimeUnit.SECONDS));
+        var leituras = List.of(metricas.getFirst(),
+                new MetricaRede("Upload - eth0", 3.75, "Mbps", metricas.getFirst().dataHora()));
+        assertTrue(cliente.processar(maquina, "11111111000191", leituras).get(5, TimeUnit.SECONDS));
         var recebida = recebidas.poll(1, TimeUnit.SECONDS);
         assertNotNull(recebida);
         assertEquals("Bearer xoxb-test", recebida.get("authorization"));
         assertEquals("C1", recebida.get("channel"));
         assertTrue(recebida.get("text").contains("máquina &lt;rede&gt;"));
-        assertTrue(recebida.get("text").contains("12.50 Mbps"));
+        assertTrue(recebida.get("text").contains("↓ Download: *12,50 Mbps*"));
+        assertTrue(recebida.get("text").contains("↑ Upload: *3,75 Mbps*"));
+        assertTrue(recebida.get("text").contains("20/11/2026 às 09:00:00 (Brasília)"));
+        assertEquals(recebida.get("text").indexOf("*eth0*"), recebida.get("text").lastIndexOf("*eth0*"));
+        assertFalse(recebida.get("text").contains("MEDICAO"));
     }
 
     @Test
@@ -168,7 +174,7 @@ class NotificadorSlackTest {
         assertFalse(cliente.processar(maquina, "11111111000191", metricas).get());
         banco.alertas = List.of(new NotificacaoRede(1, metricas.getFirst(), Nivel.CRITICO));
         assertTrue(cliente.processar(maquina, "11111111000191", metricas).get());
-        assertTrue(recebidas.take().get("text").contains("CRITICO"));
+        assertTrue(recebidas.take().get("text").contains("Crítico"));
         assertFalse(cliente.processar(maquina, "11111111000191", metricas).get());
         assertTrue(recebidas.isEmpty());
     }
