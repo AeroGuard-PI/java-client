@@ -1,9 +1,13 @@
 package br.com.monitoramento;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class Main {
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
     public static void main(String[] args) {
         var captura = new CapturaRede();
 
@@ -22,6 +26,7 @@ public class Main {
             throw new IllegalArgumentException("EMPRESA_CNPJ deve conter 14 dígitos, sem pontuação.");
         }
         var banco = new BancoDados();
+        var slack = new NotificadorSlack(banco);
         var agendador = Executors.newSingleThreadScheduledExecutor();
 
         agendador.scheduleAtFixedRate(() -> {
@@ -29,9 +34,11 @@ public class Main {
                 var maquina = captura.identificarMaquina(mac);
                 var metricas = captura.coletar();
                 int quantidade = banco.salvar(maquina, cnpj, metricas);
-                System.out.println("Capturas de rede salvas: " + quantidade);
+                if (quantidade > 0) {
+                    slack.processar(maquina, cnpj, metricas);
+                }
             } catch (Exception | LinkageError erro) {
-                System.err.println("Falha na coleta: " + erro.getMessage());
+                LOG.warn("Falha na coleta: {}", erro.getMessage());
             }
         }, 0, 5, TimeUnit.SECONDS);
 
@@ -44,9 +51,11 @@ public class Main {
             } catch (InterruptedException erro) {
                 agendador.shutdownNow();
                 Thread.currentThread().interrupt();
+            } finally {
+                slack.close();
             }
         }));
 
-        System.out.println("Monitor de rede iniciado. Para encerrar, pressione Ctrl+C.");
+        LOG.info("Monitor de rede iniciado. Coleta a cada cinco segundos.");
     }
 }

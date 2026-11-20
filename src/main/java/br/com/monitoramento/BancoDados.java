@@ -5,7 +5,10 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class BancoDados {
     public int salvar(Maquina maquina, String cnpj, List<MetricaRede> metricas) throws SQLException {
@@ -25,6 +28,63 @@ public class BancoDados {
             } catch (SQLException | RuntimeException erro) {
                 conexao.rollback();
                 throw erro;
+            }
+        }
+    }
+
+    public ConfiguracaoSlack buscarConfiguracaoSlack(String cnpj) throws SQLException {
+        var sql = """
+                SELECT s.ativo, s.canal, s.modo, s.nivel_minimo, s.cooldown_min
+                FROM configuracao_slack s JOIN empresa e ON e.id = s.empresa_id
+                WHERE e.cnpj = ?
+                """;
+        try (var conexao = Conexao.abrir(); var consulta = preparar(conexao, sql)) {
+            consulta.setString(1, cnpj);
+            try (var resultado = consulta.executeQuery()) {
+                if (!resultado.next()) {
+                    return null;
+                }
+                return new ConfiguracaoSlack(resultado.getBoolean("ativo"), resultado.getString("canal"),
+                        ConfiguracaoSlack.Modo.valueOf(resultado.getString("modo")),
+                        NotificacaoRede.Nivel.valueOf(resultado.getString("nivel_minimo")),
+                        resultado.getInt("cooldown_min"));
+            }
+        }
+    }
+
+    public List<NotificacaoRede> buscarAlertasRede(String cnpj, String mac, Instant inicio) throws SQLException {
+        var sql = """
+                SELECT h.id, c.tipo, c.valor, c.unidade_medida, c.data_hora,
+                    CASE WHEN d.nivel_alerta = 'ALERTA' THEN 'ALERTA' ELSE 'CRITICO' END AS nivel
+                FROM historico_alerta h
+                JOIN captura c ON c.id = h.maquina_captura_id AND c.id = h.componentes_captura_id
+                JOIN maquina m ON m.id = c.maquina_id
+                JOIN empresa e ON e.id = m.fkEmpresa
+                JOIN componentes componente ON componente.id = c.componentes_id
+                JOIN discretizacao d ON d.id = h.discretizacao_id AND d.empresa_id = e.id
+                JOIN configuracao_maquina configuracao ON configuracao.id = d.config_maquina_id
+                    AND configuracao.id = c.configuracao_maquina_maquina_id
+                    AND configuracao.id = c.configuracao_maquina_componentes_id
+                    AND configuracao.maquina_captura_id = c.maquina_id
+                    AND configuracao.componentes_id = c.componentes_id
+                WHERE e.cnpj = ? AND componente.nome = 'Rede' AND h.data_hora >= ?
+                    AND LOWER(REPLACE(REPLACE(TRIM(m.macAddress), ':', ''), '-', '')) = ?
+                    AND d.nivel_alerta IN ('ALERTA', 'CRITICO', 'CRÍTICO')
+                ORDER BY h.id DESC LIMIT 100
+                """;
+        try (var conexao = Conexao.abrir(); var consulta = preparar(conexao, sql)) {
+            consulta.setString(1, cnpj);
+            consulta.setTimestamp(2, Timestamp.from(inicio));
+            consulta.setString(3, mac.replace(":", "").replace("-", "").toLowerCase(Locale.ROOT));
+            try (var resultado = consulta.executeQuery()) {
+                var alertas = new ArrayList<NotificacaoRede>();
+                while (resultado.next()) {
+                    var metrica = new MetricaRede(resultado.getString("tipo"), resultado.getDouble("valor"),
+                            resultado.getString("unidade_medida"), resultado.getTimestamp("data_hora").toInstant());
+                    alertas.add(new NotificacaoRede(resultado.getLong("id"), metrica,
+                            NotificacaoRede.Nivel.valueOf(resultado.getString("nivel"))));
+                }
+                return List.copyOf(alertas);
             }
         }
     }

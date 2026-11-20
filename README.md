@@ -19,3 +19,18 @@ A taxa usa `(delta de bytes × 8) / segundos decorridos / 1.000.000`, em Mbps. A
 Uma thread agenda os ciclos a cada cinco segundos. Records e listas imutáveis transportam as leituras, e o histórico é protegido. As capturas são gravadas em lote e transação. A configuração mais recente com disponibilidade 0 impede novas inserções sem ser reativada pelo agente.
 
 As duas FKs de configuração em captura recebem o ID da configuração consultada. Uma falha na leitura ou no banco é registrada e os ciclos seguintes continuam. Não há reenvio de amostras perdidas.
+
+## Slack
+
+Defina SLACK_BOT_TOKEN em coletor.env. O instalador repassa o arquivo ao contêiner; em execução local, as variáveis precisam estar definidas no processo ou na IDE. O envio usa o SDK oficial do Slack.
+
+Ativação, canal, modo, nível mínimo e cooldown vêm de configuracao_slack, pela empresa do CNPJ configurado. Sem token ou configuração válida, não há envio. O bot precisa estar no canal e ter a permissão chat:write. Prefira o ID do canal.
+
+- TUDO: envia as capturas de rede persistidas, agrupadas em uma mensagem por ciclo disponível.
+- CONFIGURADO: envia eventos de Rede já registrados em historico_alerta, vinculados à mesma empresa e configuração da captura. Aplica nível mínimo e cooldown em minutos; zero desativa lembretes. Um evento já enviado não é repetido.
+
+A geração de alertas de rede está adiada. O Java não aplica os limites percentuais de CPU, memória ou disco aos valores em Mbps. Sem eventos válidos no histórico, CONFIGURADO permanece sem mensagens.
+
+A consulta e o envio ocorrem após a gravação, em uma tarefa separada, sem acumular solicitações enquanto há uma em andamento. Falhas do Slack não interrompem a coleta. O cliente respeita Retry-After em HTTP 429 e confirma o envio somente quando a API retorna sucesso.
+
+O esquema do banco está em [Site/src/database/AeroGuard.sql](https://github.com/AeroGuard-PI/Site/blob/main/src/database/AeroGuard.sql).
