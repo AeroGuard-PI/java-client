@@ -34,3 +34,14 @@ A geração de alertas de rede está adiada. O Java não aplica os limites perce
 A consulta e o envio ocorrem após a gravação, em uma tarefa separada, sem acumular solicitações enquanto há uma em andamento. Falhas do Slack não interrompem a coleta. O cliente respeita Retry-After em HTTP 429 e confirma o envio somente quando a API retorna sucesso.
 
 O esquema do banco está em [Site/src/database/AeroGuard.sql](https://github.com/AeroGuard-PI/Site/blob/main/src/database/AeroGuard.sql).
+
+
+## Análise de rede por intervalo
+
+A branch `feat/telemetria-redes-yuri` mantém as taxas legadas e grava duração, deltas, contadores locais e estado em `captura_rede`, na mesma transação. A primeira leitura e leituras sem comparação válida preservam o estado sem criar uma taxa. Contadores indisponíveis são nulos.
+
+Antes de executar esta versão, aplique a atualização `src/database/atualizacoes/001_captura_rede.sql` do repositório Site ao banco compartilhado. O coletor não cria tabelas. Implante uma versão Java por máquina.
+
+O componente Rede usa a configuração da máquina. Configuração desabilitada impede a gravação. As configurações do Slack continuam no banco; o token permanece no ambiente. Esta versão não gera alertas automáticos de rede.
+
+A dashboard e o relatório estão documentados em [Análise de rede](https://github.com/AeroGuard-PI/Site/blob/feat/dashboard-redes-yuri/docs/dashboard-redes.md).
